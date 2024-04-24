@@ -790,15 +790,14 @@ def all(df, columns, target, test_size, lr_solver_type='lbfgs', svc_kernel_type=
     plt.figure(figsize=(10, 6))
     bars = plt.bar(models, accuracies, color='blue')
     plt.xlabel('Models')
-    plt.ylabel('Precision')
-    plt.title('Precision of Different Models')
+    plt.ylabel('Accuracy')
+    plt.title('Accuracy of Different Models')
     plt.xticks(rotation=45)
     plt.tight_layout()
 
     for bar, accuracy in zip(bars, accuracies):
         plt.text(bar.get_x() + bar.get_width() / 2, bar.get_height() - 0.05, f'{accuracy:.2f}', ha='center', color='white', fontsize=9)
-
-    # Show plot
+    
     plt.show()
     
 
