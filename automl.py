@@ -799,14 +799,5 @@ def all(df, columns, target, test_size, lr_solver_type='lbfgs', svc_kernel_type=
         plt.text(bar.get_x() + bar.get_width() / 2, bar.get_height() - 0.05, f'{accuracy:.2f}', ha='center', color='white', fontsize=9)
     
     plt.show()
-    
-
-df = pd.read_csv("Phishing_Legitimate_full.csv")
-cols = df.columns.to_list()
-cols.remove('id')
-cols.remove('CLASS_LABEL')
-
-all(df, cols, 'CLASS_LABEL', 0.2)
-
 
 
