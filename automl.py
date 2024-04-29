@@ -551,7 +551,7 @@ def knn(df, columns, target, test_size, corr_method='pearson', weights_type='uni
     X_train, X_test, y_train, y_test = train_test_split(X, y, test_size=test_size, random_state=42, stratify=y)
 
     # CREATE FEATURE SELECTION USING CORRELATION CHECK COMBINED W/ BRUTE FORCE
-    corr = df[columns].corrwith(df["CLASS_LABEL"], method=corr_method)
+    corr = df[columns].corrwith(df[target], method=corr_method)
     corr = corr.to_dict()
     corr = {k: corr[k] for k in corr if not isnan(corr[k])}
     corr = {key: abs(val) for key, val in corr.items()}
@@ -756,31 +756,33 @@ def all(df, columns, target, test_size, lr_solver_type='lbfgs', svc_kernel_type=
     knn(df, columns, target, test_size, corr_method=knn_corr_method, weights_type=knn_weights_type, algorithm_type=knn_algorithm_type)
     naive_bayes(df, columns, target, test_size)
 
-    rf_df = pd.read_csv("rf_results.csv")
+    folder = fr"{os.getcwd()}\results"
+
+    rf_df = pd.read_csv(fr"{folder}\rf_results.csv")
     rf_accuracy = rf_df.iloc[2]
     rf_accuracy = rf_accuracy['precision']
 
-    dt_df = pd.read_csv("dt_results.csv")
+    dt_df = pd.read_csv(fr"{folder}\dt_results.csv")
     dt_accuracy = dt_df.iloc[2]
     dt_accuracy = dt_accuracy['precision']
 
-    xgb_df = pd.read_csv("xgb_results.csv")
+    xgb_df = pd.read_csv(fr"{folder}\xgb_results.csv")
     xgb_accuracy = xgb_df.iloc[2]
     xgb_accuracy = xgb_accuracy['precision']
 
-    lr_df = pd.read_csv("lr_results.csv")
+    lr_df = pd.read_csv(fr"{folder}\lr_results.csv")
     lr_accuracy = lr_df.iloc[2]
     lr_accuracy = lr_accuracy['precision']
 
-    svc_df = pd.read_csv("svc_results.csv")
+    svc_df = pd.read_csv(fr"{folder}\svc_results.csv")
     svc_accuracy = svc_df.iloc[2]
     svc_accuracy = svc_accuracy['precision']
 
-    knn_df = pd.read_csv("knn_results.csv")
+    knn_df = pd.read_csv(fr"{folder}\knn_results.csv")
     knn_accuracy = knn_df.iloc[2]
     knn_accuracy = knn_accuracy['precision']
 
-    nb_df = pd.read_csv("nb_results.csv")
+    nb_df = pd.read_csv(fr"{folder}\nb_results.csv")
     nb_accuracy = nb_df.iloc[2]
     nb_accuracy = nb_accuracy['precision']    
 
