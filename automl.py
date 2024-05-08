@@ -22,44 +22,45 @@ import time
 import os
 
 
-def random_forest(df, columns, target, test_size):
+def random_forest(df, columns, target, test_size, feature_selection=True):
     # SPLITTING DATA FOR TRAINING AND TESTING (PRE-NIAPY)
     X = df[columns]
     y = df[target]
 
     X_train, X_test, y_train, y_test = train_test_split(X, y, test_size=test_size, random_state=42, stratify=y)
 
-    # FEATURE SELECTION USING NIAPY
-    class RandomForestFeatureSelection(Problem):
-        def __init__(self, X_train, y_train, alpha=0.99):
-            super().__init__(dimension=X_train.shape[1], lower=0, upper=1)
-            self.X_train = X_train
-            self.y_train = y_train
-            self.alpha = alpha
+    if feature_selection:
+        # FEATURE SELECTION USING NIAPY
+        class RandomForestFeatureSelection(Problem):
+            def __init__(self, X_train, y_train, alpha=0.99):
+                super().__init__(dimension=X_train.shape[1], lower=0, upper=1)
+                self.X_train = X_train
+                self.y_train = y_train
+                self.alpha = alpha
 
-        def _evaluate(self, x):
-            selected = x > 0.5
-            num_selected = selected.sum()
-            if num_selected == 0:
-                return 1.0
-            accuracy = cross_val_score(RandomForestClassifier(), self.X_train.iloc[:, selected], self.y_train, cv=2, n_jobs=-1).mean()
-            num_features = self.X_train.shape[1]
-            return self.alpha * (1 - accuracy) + (1 - self.alpha) * (num_selected / num_features)
+            def _evaluate(self, x):
+                selected = x > 0.5
+                num_selected = selected.sum()
+                if num_selected == 0:
+                    return 1.0
+                accuracy = cross_val_score(RandomForestClassifier(), self.X_train.iloc[:, selected], self.y_train, cv=2, n_jobs=-1).mean()
+                num_features = self.X_train.shape[1]
+                return self.alpha * (1 - accuracy) + (1 - self.alpha) * (num_selected / num_features)
 
-    problem_rf = RandomForestFeatureSelection(X_train, y_train)
-    task_rf = Task(problem_rf, max_iters=100)
-    algorithm_rf = ParticleSwarmOptimization(population_size=10, seed=1234)
+        problem_rf = RandomForestFeatureSelection(X_train, y_train)
+        task_rf = Task(problem_rf, max_iters=100)
+        algorithm_rf = ParticleSwarmOptimization(population_size=10, seed=1234)
 
-    best_features_rf, best_fitness_rf = algorithm_rf.run(task_rf)
+        best_features_rf, best_fitness_rf = algorithm_rf.run(task_rf)
 
-    selected_features_rf = best_features_rf > 0.5
-    selected_columns_rf = X_train.columns[selected_features_rf]
-    
-    # SPLITTING DATA FOR TRAINING AND TESTING (POST-NIAPY)
-    X = df[selected_columns_rf]
-    y = df[target]
+        selected_features_rf = best_features_rf > 0.5
+        selected_columns_rf = X_train.columns[selected_features_rf]
+        
+        # SPLITTING DATA FOR TRAINING AND TESTING (POST-NIAPY)
+        X = df[selected_columns_rf]
+        y = df[target]
 
-    X_train, X_test, y_train, y_test = train_test_split(X, y, test_size=test_size, random_state=42, stratify=y)
+        X_train, X_test, y_train, y_test = train_test_split(X, y, test_size=test_size, random_state=42, stratify=y)
 
     # HYPERPARAMETER TUNING WITH OPTUNA
     def objective(trial):
@@ -122,47 +123,61 @@ def random_forest(df, columns, target, test_size):
         os.makedirs(folder)
     result_df.to_csv(fr"{folder}\rf_results.csv", index=False)
 
-def decision_tree(df, columns, target, test_size):
+    folder = fr"{os.getcwd()}\hyperparameters"
+    if not os.path.exists(folder):
+        os.makedirs(folder)
+
+    f = open(fr"{folder}\rf.txt", "w")
+    f.write(f'''n_estimators = {results['n_estimators']}
+max_depth = {results['max_depth']}
+min_samples_split = {results['min_samples_split']}
+min_samples_leaf = {results['min_samples_leaf']}
+random_state = 42
+n_jobs = -1''')
+    f.close()
+
+def decision_tree(df, columns, target, test_size, feature_selection=True):
     # SPLITTING DATA FOR TRAINING AND TESTING (PRE-NIAPY)
     X = df[columns]
     y = df[target]
 
     X_train, X_test, y_train, y_test = train_test_split(X, y, test_size=test_size, random_state=42, stratify=y)
     
-    # FEATURE SELECTION USING NIAPY
-    class DecisionTreeFeatureSelection(Problem):
-        def __init__(self, X_train, y_train, alpha=0.99):
-            super().__init__(dimension=X_train.shape[1], lower=0, upper=1)
-            self.X_train = X_train
-            self.y_train = y_train
-            self.alpha = alpha
+    if feature_selection:
+        # FEATURE SELECTION USING NIAPY
+        class DecisionTreeFeatureSelection(Problem):
+            def __init__(self, X_train, y_train, alpha=0.99):
+                super().__init__(dimension=X_train.shape[1], lower=0, upper=1)
+                self.X_train = X_train
+                self.y_train = y_train
+                self.alpha = alpha
 
-        def _evaluate(self, x):
-            selected = x > 0.5
-            selected_indices = np.where(selected)[0]
-            num_selected = selected_indices.shape[0]
-            
-            if num_selected == 0:
-                return 1.0
-    
-            accuracy = accuracy = cross_val_score(DecisionTreeClassifier(), self.X_train.iloc[:, selected_indices], self.y_train, cv=2, n_jobs=-1).mean()
-            num_features = self.X_train.shape[1]
-            return self.alpha * (1 - accuracy) + (1 - self.alpha) * (num_selected / num_features)
+            def _evaluate(self, x):
+                selected = x > 0.5
+                selected_indices = np.where(selected)[0]
+                num_selected = selected_indices.shape[0]
+                
+                if num_selected == 0:
+                    return 1.0
+        
+                accuracy = accuracy = cross_val_score(DecisionTreeClassifier(), self.X_train.iloc[:, selected_indices], self.y_train, cv=2, n_jobs=-1).mean()
+                num_features = self.X_train.shape[1]
+                return self.alpha * (1 - accuracy) + (1 - self.alpha) * (num_selected / num_features)
 
-    problem_dt = DecisionTreeFeatureSelection(X_train, y_train)
-    task_dt = Task(problem_dt, max_iters=100)
-    algorithm_dt = ParticleSwarmOptimization(population_size=10, seed=1234)
+        problem_dt = DecisionTreeFeatureSelection(X_train, y_train)
+        task_dt = Task(problem_dt, max_iters=100)
+        algorithm_dt = ParticleSwarmOptimization(population_size=10, seed=1234)
 
-    best_features_dt, best_fitness_dt = algorithm_dt.run(task_dt)
+        best_features_dt, best_fitness_dt = algorithm_dt.run(task_dt)
 
-    selected_features_dt = best_features_dt > 0.5
-    selected_columns_dt = X_train.columns[selected_features_dt]
-    
-    # SPLITTING DATA FOR TRAINING AND TESTING (POST-NIAPY)
-    X = df[selected_columns_dt]
-    y = df[target]
+        selected_features_dt = best_features_dt > 0.5
+        selected_columns_dt = X_train.columns[selected_features_dt]
+        
+        # SPLITTING DATA FOR TRAINING AND TESTING (POST-NIAPY)
+        X = df[selected_columns_dt]
+        y = df[target]
 
-    X_train, X_test, y_train, y_test = train_test_split(X, y, test_size=test_size, random_state=42, stratify=y)
+        X_train, X_test, y_train, y_test = train_test_split(X, y, test_size=test_size, random_state=42, stratify=y)
                                                 
     # HYPERPARAMETER TUNING WITH OPTUNA
     def objective(trial):
@@ -228,49 +243,61 @@ def decision_tree(df, columns, target, test_size):
         os.makedirs(folder)
     result_df.to_csv(fr"{folder}\dt_results.csv", index=False)
 
-def xgboost(df, columns, target, test_size):
+    folder = fr"{os.getcwd()}\hyperparameters"
+    if not os.path.exists(folder):
+        os.makedirs(folder)
+
+    f = open(fr"{folder}\dt.txt", "w")
+    f.write(f'''max_depth = {results['max_depth']}
+min_samples_split = {results['min_samples_split']}
+min_samples_leaf = {results['min_samples_leaf']}
+random_state = 42''')
+    f.close()
+
+def xgboost(df, columns, target, test_size, feature_selection=True):
     # SPLITTING DATA FOR TRAINING AND TESTING (PRE-NIAPY)
     X = df[columns]
     y = df[target]
 
     X_train, X_test, y_train, y_test = train_test_split(X, y, test_size=test_size, random_state=42, stratify=y)
     
-    # FEATURE SELECTION USING NIAPY
-    class XGBoostFeatureSelection(Problem):
-        def __init__(self, X_train, y_train, alpha=0.99):
-            super().__init__(dimension=X_train.shape[1], lower=0, upper=1)
-            self.X_train = X_train
-            self.y_train = y_train
-            self.alpha = alpha
+    if feature_selection:
+        # FEATURE SELECTION USING NIAPY
+        class XGBoostFeatureSelection(Problem):
+            def __init__(self, X_train, y_train, alpha=0.99):
+                super().__init__(dimension=X_train.shape[1], lower=0, upper=1)
+                self.X_train = X_train
+                self.y_train = y_train
+                self.alpha = alpha
 
-        def _evaluate(self, x):
-            selected = x > 0.5
-            
-            selected_indices = np.where(selected)[0]
-            num_selected = selected_indices.shape[0]
-            
-            if num_selected == 0:
-                return 1.0
-            
-            accuracy = cross_val_score(XGBClassifier(), self.X_train.iloc[:, selected_indices], self.y_train, cv=2, n_jobs=-1).mean()
-            num_features = self.X_train.shape[1]
+            def _evaluate(self, x):
+                selected = x > 0.5
+                
+                selected_indices = np.where(selected)[0]
+                num_selected = selected_indices.shape[0]
+                
+                if num_selected == 0:
+                    return 1.0
+                
+                accuracy = cross_val_score(XGBClassifier(), self.X_train.iloc[:, selected_indices], self.y_train, cv=2, n_jobs=-1).mean()
+                num_features = self.X_train.shape[1]
 
-            return self.alpha * (1 - accuracy) + (1 - self.alpha) * (num_selected / num_features)
+                return self.alpha * (1 - accuracy) + (1 - self.alpha) * (num_selected / num_features)
 
-    problem_xgb = XGBoostFeatureSelection(X_train, y_train)
-    task_xgb = Task(problem_xgb, max_iters=100)
-    algorithm_xgb = ParticleSwarmOptimization(population_size=10, seed=1234)
+        problem_xgb = XGBoostFeatureSelection(X_train, y_train)
+        task_xgb = Task(problem_xgb, max_iters=100)
+        algorithm_xgb = ParticleSwarmOptimization(population_size=10, seed=1234)
 
-    best_features_xgb, best_fitness_xgb = algorithm_xgb.run(task_xgb)
+        best_features_xgb, best_fitness_xgb = algorithm_xgb.run(task_xgb)
 
-    selected_features_xgb = best_features_xgb > 0.5
-    selected_columns_xgb = X_train.columns[selected_features_xgb]
-    
-    # SPLITTING DATA FOR TRAINING AND TESTING (POST-NIAPY)
-    X = df[selected_columns_xgb]
-    y = df[target]
+        selected_features_xgb = best_features_xgb > 0.5
+        selected_columns_xgb = X_train.columns[selected_features_xgb]
+        
+        # SPLITTING DATA FOR TRAINING AND TESTING (POST-NIAPY)
+        X = df[selected_columns_xgb]
+        y = df[target]
 
-    X_train, X_test, y_train, y_test = train_test_split(X, y, test_size=test_size, random_state=42, stratify=y)
+        X_train, X_test, y_train, y_test = train_test_split(X, y, test_size=test_size, random_state=42, stratify=y)
     
     # HYPERPARAMETER TUNING USING OPTUNA
     def objective(trial):
@@ -340,47 +367,64 @@ def xgboost(df, columns, target, test_size):
         os.makedirs(folder)
     result_df.to_csv(fr"{folder}\xgb_results.csv", index=False)
 
-def logistic_regression(df, columns, target, test_size, solver_type='lbfgs'):
+    folder = fr"{os.getcwd()}\hyperparameters"
+    if not os.path.exists(folder):
+        os.makedirs(folder)
+
+    f = open(fr"{folder}\xgb.txt", "w")
+    f.write(f'''max_depth = {results["max_depth"]}
+min_child_weight = {results["min_child_weight"]}
+subsample = {results["subsample"]}
+colsample_bytree = {results["colsample_bytree"]}
+learning_rate = {results["learning_rate"]}
+gamma = {results["gamma"]}
+n_estimators = {results["n_estimators"]}''')
+    f.close()
+
+    
+
+def logistic_regression(df, columns, target, test_size, feature_selection=True, solver_type='lbfgs'):
     # SPLITTING DATA FOR TRAINING AND TESTING (PRE-NIAPY)
     X = df[columns]
     y = df[target]
 
     X_train, X_test, y_train, y_test = train_test_split(X, y, test_size=test_size, random_state=42, stratify=y)
     
-    # FEATURE SELECTION USING NIAPY
-    class LogisticRegressionFeatureSelection(Problem):
-        def __init__(self, X_train, y_train, alpha=0.99):
-            super().__init__(dimension=X_train.shape[1], lower=0, upper=1)
-            self.X_train = X_train
-            self.y_train = y_train
-            self.alpha = alpha
-        
-        def _evaluate(self, x):
-            selected = x > 0.5
-            selected_indices = np.where(selected)[0]  
-            num_selected = selected_indices.shape[0]
+    if feature_selection:
+        # FEATURE SELECTION USING NIAPY
+        class LogisticRegressionFeatureSelection(Problem):
+            def __init__(self, X_train, y_train, alpha=0.99):
+                super().__init__(dimension=X_train.shape[1], lower=0, upper=1)
+                self.X_train = X_train
+                self.y_train = y_train
+                self.alpha = alpha
             
-            if num_selected == 0:
-                return 1.0
+            def _evaluate(self, x):
+                selected = x > 0.5
+                selected_indices = np.where(selected)[0]  
+                num_selected = selected_indices.shape[0]
+                
+                if num_selected == 0:
+                    return 1.0
+                
+                accuracy = cross_val_score(LogisticRegression(), self.X_train.iloc[:, selected_indices], self.y_train, cv=2, n_jobs=-1).mean()
+                score = 1 - accuracy
+                num_features = self.X_train.shape[1]
+                return self.alpha * score + (1 - self.alpha) * (num_selected / num_features)
             
-            accuracy = cross_val_score(LogisticRegression(), self.X_train.iloc[:, selected_indices], self.y_train, cv=2, n_jobs=-1).mean()
-            score = 1 - accuracy
-            num_features = self.X_train.shape[1]
-            return self.alpha * score + (1 - self.alpha) * (num_selected / num_features)
+        problem = LogisticRegressionFeatureSelection(X_train, y_train)
+        task = Task(problem, max_iters=100)
+        algorithm = ParticleSwarmOptimization(population_size=10, seed=1234)
+        best_features, best_fitness = algorithm.run(task)
+
+        selected_features = best_features > 0.5
+        selected_columns = X_train.columns[selected_features]
         
-    problem = LogisticRegressionFeatureSelection(X_train, y_train)
-    task = Task(problem, max_iters=100)
-    algorithm = ParticleSwarmOptimization(population_size=10, seed=1234)
-    best_features, best_fitness = algorithm.run(task)
+        # SPLITTING DATA FOR TRAINING AND TESTING (POST-NIAPY)
+        X = df[selected_columns]
+        y = df[target]
 
-    selected_features = best_features > 0.5
-    selected_columns = X_train.columns[selected_features]
-    
-    # SPLITTING DATA FOR TRAINING AND TESTING (POST-NIAPY)
-    X = df[selected_columns]
-    y = df[target]
-
-    X_train, X_test, y_train, y_test = train_test_split(X, y, test_size=test_size, random_state=42, stratify=y)
+        X_train, X_test, y_train, y_test = train_test_split(X, y, test_size=test_size, random_state=42, stratify=y)
     
      # HYPERPARAMETER TUNING USING OPTUNA
     def objective(trial):
@@ -442,47 +486,59 @@ def logistic_regression(df, columns, target, test_size, solver_type='lbfgs'):
         os.makedirs(folder)
     result_df.to_csv(fr"{folder}\lr_results.csv", index=False)
 
-def support_vector(df, columns, target, test_size, kernel_type='rbf'):
+    folder = fr"{os.getcwd()}\hyperparameters"
+    if not os.path.exists(folder):
+        os.makedirs(folder)
+
+    f = open(fr"{folder}\lr.txt", "w")
+    f.write(f'''max_iter = {results["max_iter"]}
+C = {results["C"]}
+solver = {solver_type}
+n_jobs = -1''')
+    f.close()
+
+def support_vector(df, columns, target, test_size, feature_selection=True, kernel_type='rbf'):
     # SPLITTING DATA FOR TRAINING AND TESTING (PRE-NIAPY)
     X = df[columns]
     y = df[target]
 
     X_train, X_test, y_train, y_test = train_test_split(X, y, test_size=test_size, random_state=42, stratify=y)
     
-    # FEATURE SELECTION USING NIAPY
-    class SVCFeatureSelection(Problem):
-        def __init__(self, X_train, y_train, alpha=0.99):
-            super().__init__(dimension=X_train.shape[1], lower=0, upper=1)
-            self.X_train = X_train
-            self.y_train = y_train
-            self.alpha = alpha
-        
-        def _evaluate(self, x):
-            selected = x > 0.5
-            selected_indices = np.where(selected)[0]  
-            num_selected = selected_indices.shape[0]
+    if feature_selection:
+        # FEATURE SELECTION USING NIAPY
+        class SVCFeatureSelection(Problem):
+            def __init__(self, X_train, y_train, alpha=0.99):
+                super().__init__(dimension=X_train.shape[1], lower=0, upper=1)
+                self.X_train = X_train
+                self.y_train = y_train
+                self.alpha = alpha
             
-            if num_selected == 0:
-                return 1.0
+            def _evaluate(self, x):
+                selected = x > 0.5
+                selected_indices = np.where(selected)[0]  
+                num_selected = selected_indices.shape[0]
+                
+                if num_selected == 0:
+                    return 1.0
+                
+                accuracy = cross_val_score(SVC(), self.X_train.iloc[:, selected_indices], self.y_train, cv=2, n_jobs=-1).mean()
+                score = 1 - accuracy
+                num_features = self.X_train.shape[1]
+                return self.alpha * score + (1 - self.alpha) * (num_selected / num_features)
             
-            accuracy = cross_val_score(SVC(), self.X_train.iloc[:, selected_indices], self.y_train, cv=2, n_jobs=-1).mean()
-            score = 1 - accuracy
-            num_features = self.X_train.shape[1]
-            return self.alpha * score + (1 - self.alpha) * (num_selected / num_features)
+        problem = SVCFeatureSelection(X_train, y_train)
+        task = Task(problem, max_iters=100)
+        algorithm = ParticleSwarmOptimization(population_size=10, seed=1234)
+        best_features, best_fitness = algorithm.run(task)
+
+        selected_features = best_features > 0.5
+        selected_columns = X_train.columns[selected_features]
         
-    problem = SVCFeatureSelection(X_train, y_train)
-    task = Task(problem, max_iters=100)
-    algorithm = ParticleSwarmOptimization(population_size=10, seed=1234)
-    best_features, best_fitness = algorithm.run(task)
+        # SPLITTING DATA FOR TRAINING AND TESTING (POST-NIAPY)
+        X = df[selected_columns]
+        y = df[target]
 
-    selected_features = best_features > 0.5
-    selected_columns = X_train.columns[selected_features]
-    
-    # SPLITTING DATA FOR TRAINING AND TESTING (POST-NIAPY)
-    X = df[selected_columns]
-    y = df[target]
-
-    X_train, X_test, y_train, y_test = train_test_split(X, y, test_size=test_size, random_state=42, stratify=y)
+        X_train, X_test, y_train, y_test = train_test_split(X, y, test_size=test_size, random_state=42, stratify=y)
     
      # HYPERPARAMETER TUNING USING OPTUNA
     def objective(trial):
@@ -543,49 +599,64 @@ def support_vector(df, columns, target, test_size, kernel_type='rbf'):
         os.makedirs(folder)
     result_df.to_csv(fr"{folder}\svc_results.csv", index=False)
 
-def knn(df, columns, target, test_size, corr_method='pearson', weights_type='uniform', algorithm_type='auto'):
-    # SPLITTING DATA FOR TRAINING AND TESTING (PRE-NIAPY)
+    folder = fr"{os.getcwd()}\hyperparameters"
+    if not os.path.exists(folder):
+        os.makedirs(folder)
+
+    f = open(fr"{folder}\svc.txt", "w")
+    f.write(f'''C = {results["C"]}
+degree = {results["degree"]}
+kernel = {kernel_type}''')
+    f.close()
+
+def knn(df, columns, target, test_size, feature_selection=True, corr_method='pearson', weights_type='uniform', algorithm_type='auto'):
     X = df[columns]
     y = df[target]
 
     X_train, X_test, y_train, y_test = train_test_split(X, y, test_size=test_size, random_state=42, stratify=y)
 
-    # CREATE FEATURE SELECTION USING CORRELATION CHECK COMBINED W/ BRUTE FORCE
-    corr = df[columns].corrwith(df[target], method=corr_method)
-    corr = corr.to_dict()
-    corr = {k: corr[k] for k in corr if not isnan(corr[k])}
-    corr = {key: abs(val) for key, val in corr.items()}
-    sorted_corr = sorted(corr.items(), key=lambda x:x[1], reverse=True)
-    sorted_corr = dict(sorted_corr)
-    corr = dict(itertools.islice(sorted_corr.items(), 10)) 
-    chosen_cols = list(corr.keys())
-    X_train = X_train[chosen_cols]
-    X_test = X_test[chosen_cols]
-    
-    # FEATURE SELECTION USING BRUTE FORCE
-    # NUMBER OF SELECTED FEATURES = nC2 + nC3 + ... + nCn
-    # TAKE APPROX. 8 MILLION YEARS TO FINISH USING THIS LAPTOP IF ALL COLS USED
-    n_features = X_train.shape[1]
-    best_score = 0
-    best_features = None
+    if feature_selection:
+        # CREATE FEATURE SELECTION USING CORRELATION CHECK COMBINED W/ BRUTE FORCE
+        corr = df[columns].corrwith(df[target], method=corr_method)
+        corr = corr.to_dict()
+        corr = {k: corr[k] for k in corr if not isnan(corr[k])}
+        corr = {key: abs(val) for key, val in corr.items()}
+        sorted_corr = sorted(corr.items(), key=lambda x:x[1], reverse=True)
+        sorted_corr = dict(sorted_corr)
+        corr = dict(itertools.islice(sorted_corr.items(), 10)) 
+        chosen_cols = list(corr.keys())
+        X_train = X_train[chosen_cols]
+        X_test = X_test[chosen_cols]
+        
+        # FEATURE SELECTION USING BRUTE FORCE
+        # NUMBER OF SELECTED FEATURES = nC2 + nC3 + ... + nCn
+        # TAKE APPROX. 8 MILLION YEARS TO FINISH USING THIS LAPTOP IF ALL COLS USED
+        n_features = X_train.shape[1]
+        best_score = 0
+        best_features = None
 
-    for r in range(1, n_features + 1):
-        for combo in combinations(range(n_features), r):
-            if len(combo) > 1:
-                chosen_features = [chosen_cols[idx] for idx in combo]
-                X_subset = X_train[chosen_features]
-                scores = cross_val_score(KNeighborsClassifier(), X_subset, y_train, cv=2, n_jobs=-1)
-                avg_score = scores.mean()
+        for r in range(1, n_features + 1):
+            for combo in combinations(range(n_features), r):
+                if len(combo) > 1:
+                    chosen_features = [chosen_cols[idx] for idx in combo]
+                    X_subset = X_train[chosen_features]
+                    scores = cross_val_score(KNeighborsClassifier(), X_subset, y_train, cv=2, n_jobs=-1)
+                    avg_score = scores.mean()
 
-                if avg_score > best_score:
-                    best_score = avg_score
-                    best_features = chosen_features
-    
-    # SPLITTING DATA FOR TRAINING AND TESTING (POST-FEATURE SELECTION)
-    X = df[best_features]
-    y = df[target]
+                    if avg_score > best_score:
+                        best_score = avg_score
+                        best_features = chosen_features
+        
+        # SPLITTING DATA FOR TRAINING AND TESTING (POST-FEATURE SELECTION)
+        X = df[best_features]
+        y = df[target]
 
-    X_train, X_test, y_train, y_test = train_test_split(X, y, test_size=test_size, random_state=42, stratify=y)
+        X_train, X_test, y_train, y_test = train_test_split(X, y, test_size=test_size, random_state=42, stratify=y)
+    else:
+        X = df[columns[:15]]
+        y = df[target]
+
+        X_train, X_test, y_train, y_test = train_test_split(X, y, test_size=test_size, random_state=42, stratify=y)
     
      # HYPERPARAMETER TUNING USING OPTUNA
     def objective(trial):
@@ -649,47 +720,60 @@ def knn(df, columns, target, test_size, corr_method='pearson', weights_type='uni
         os.makedirs(folder)
     result_df.to_csv(fr"{folder}\knn_results.csv", index=False)
 
-def naive_bayes(df, columns, target, test_size):
+    folder = fr"{os.getcwd()}\hyperparameters"
+    if not os.path.exists(folder):
+        os.makedirs(folder)
+
+    f = open(fr"{folder}\knn.txt", "w")
+    f.write(f'''p = {results["p"]}
+n_neighbors = {results["n_neighbors"]}
+leaf_size = {results["leaf_size"]}
+weights = {weights_type}
+algorithm = {algorithm_type}''')
+    f.close()
+
+def naive_bayes(df, columns, target, test_size, feature_selection=True):
     # SPLITTING DATA FOR TRAINING AND TESTING (PRE-NIAPY)
     X = df[columns]
     y = df[target]
 
     X_train, X_test, y_train, y_test = train_test_split(X, y, test_size=test_size, random_state=42, stratify=y)
     
-    # FEATURE SELECTION USING NIAPY
-    class NBFeatureSelection(Problem):
-        def __init__(self, X_train, y_train, alpha=0.99):
-            super().__init__(dimension=X_train.shape[1], lower=0, upper=1)
-            self.X_train = X_train
-            self.y_train = y_train
-            self.alpha = alpha
-        
-        def _evaluate(self, x):
-            selected = x > 0.5
-            selected_indices = np.where(selected)[0]  
-            num_selected = selected_indices.shape[0]
+    if feature_selection:
+        # FEATURE SELECTION USING NIAPY
+        class NBFeatureSelection(Problem):
+            def __init__(self, X_train, y_train, alpha=0.99):
+                super().__init__(dimension=X_train.shape[1], lower=0, upper=1)
+                self.X_train = X_train
+                self.y_train = y_train
+                self.alpha = alpha
             
-            if num_selected == 0:
-                return 1.0
+            def _evaluate(self, x):
+                selected = x > 0.5
+                selected_indices = np.where(selected)[0]  
+                num_selected = selected_indices.shape[0]
+                
+                if num_selected == 0:
+                    return 1.0
+                
+                accuracy = cross_val_score(GaussianNB(), self.X_train.iloc[:, selected_indices], self.y_train, cv=2, n_jobs=-1).mean()
+                score = 1 - accuracy
+                num_features = self.X_train.shape[1]
+                return self.alpha * score + (1 - self.alpha) * (num_selected / num_features)
             
-            accuracy = cross_val_score(GaussianNB(), self.X_train.iloc[:, selected_indices], self.y_train, cv=2, n_jobs=-1).mean()
-            score = 1 - accuracy
-            num_features = self.X_train.shape[1]
-            return self.alpha * score + (1 - self.alpha) * (num_selected / num_features)
+        problem = NBFeatureSelection(X_train, y_train)
+        task = Task(problem, max_iters=100)
+        algorithm = ParticleSwarmOptimization(population_size=10, seed=1234)
+        best_features, best_fitness = algorithm.run(task)
+
+        selected_features = best_features > 0.5
+        selected_columns = X_train.columns[selected_features]
         
-    problem = NBFeatureSelection(X_train, y_train)
-    task = Task(problem, max_iters=100)
-    algorithm = ParticleSwarmOptimization(population_size=10, seed=1234)
-    best_features, best_fitness = algorithm.run(task)
+        # SPLITTING DATA FOR TRAINING AND TESTING (POST-NIAPY)
+        X = df[selected_columns]
+        y = df[target]
 
-    selected_features = best_features > 0.5
-    selected_columns = X_train.columns[selected_features]
-    
-    # SPLITTING DATA FOR TRAINING AND TESTING (POST-NIAPY)
-    X = df[selected_columns]
-    y = df[target]
-
-    X_train, X_test, y_train, y_test = train_test_split(X, y, test_size=test_size, random_state=42, stratify=y)
+        X_train, X_test, y_train, y_test = train_test_split(X, y, test_size=test_size, random_state=42, stratify=y)
     
      # HYPERPARAMETER TUNING USING OPTUNA
     def objective(trial):
@@ -747,44 +831,52 @@ def naive_bayes(df, columns, target, test_size):
         os.makedirs(folder)
     result_df.to_csv(fr"{folder}\nb_results.csv", index=False)
 
-def all(df, columns, target, test_size, lr_solver_type='lbfgs', svc_kernel_type='rbf', knn_corr_method='pearson', knn_weights_type='uniform', knn_algorithm_type='auto'):
-    random_forest(df, columns, target, test_size)
-    decision_tree(df, columns, target, test_size)
-    xgboost(df, columns, target, test_size)
-    logistic_regression(df, columns, target, test_size, solver_type=lr_solver_type)
-    support_vector(df, columns, target, test_size, kernel_type=svc_kernel_type)
-    knn(df, columns, target, test_size, corr_method=knn_corr_method, weights_type=knn_weights_type, algorithm_type=knn_algorithm_type)
-    naive_bayes(df, columns, target, test_size)
+    folder = fr"{os.getcwd()}\hyperparameters"
+    if not os.path.exists(folder):
+        os.makedirs(folder)
+
+    f = open(fr"{folder}\nb.txt", "w")
+    f.write(f"var_smoothing = {results['var_smoothing']}")
+    f.close()
+
+def all(df, columns, target, test_size, feature_selection=True, lr_solver_type='lbfgs', svc_kernel_type='rbf', knn_corr_method='pearson', knn_weights_type='uniform', knn_algorithm_type='auto'):
+    random_forest(df, columns, target, test_size, feature_selection)
+    decision_tree(df, columns, target, test_size, feature_selection)
+    xgboost(df, columns, target, test_size, feature_selection)
+    logistic_regression(df, columns, target, test_size, feature_selection, solver_type=lr_solver_type)
+    support_vector(df, columns, target, test_size, feature_selection, kernel_type=svc_kernel_type)
+    knn(df, columns, target, test_size, feature_selection, corr_method=knn_corr_method, weights_type=knn_weights_type, algorithm_type=knn_algorithm_type)
+    naive_bayes(df, columns, target, test_size, feature_selection)
 
     folder = fr"{os.getcwd()}\results"
 
     rf_df = pd.read_csv(fr"{folder}\rf_results.csv")
-    rf_accuracy = rf_df.iloc[2]
-    rf_accuracy = rf_accuracy['precision']
+    rf_accuracy = rf_df[rf_df['Stats'] == 'accuracy']
+    rf_accuracy = rf_accuracy['precision'].values[0]
 
     dt_df = pd.read_csv(fr"{folder}\dt_results.csv")
-    dt_accuracy = dt_df.iloc[2]
-    dt_accuracy = dt_accuracy['precision']
+    dt_accuracy = dt_df[dt_df['Stats'] == 'accuracy']
+    dt_accuracy = dt_accuracy['precision'].values[0]
 
     xgb_df = pd.read_csv(fr"{folder}\xgb_results.csv")
-    xgb_accuracy = xgb_df.iloc[2]
-    xgb_accuracy = xgb_accuracy['precision']
+    xgb_accuracy = xgb_df[xgb_df['Stats'] == 'accuracy']
+    xgb_accuracy = xgb_accuracy['precision'].values[0]
 
     lr_df = pd.read_csv(fr"{folder}\lr_results.csv")
-    lr_accuracy = lr_df.iloc[2]
-    lr_accuracy = lr_accuracy['precision']
+    lr_accuracy = lr_df[lr_df['Stats'] == 'accuracy']
+    lr_accuracy = lr_accuracy['precision'].values[0]
 
     svc_df = pd.read_csv(fr"{folder}\svc_results.csv")
-    svc_accuracy = svc_df.iloc[2]
-    svc_accuracy = svc_accuracy['precision']
+    svc_accuracy = svc_df[svc_df['Stats'] == 'accuracy']
+    svc_accuracy = svc_accuracy['precision'].values[0]
 
     knn_df = pd.read_csv(fr"{folder}\knn_results.csv")
-    knn_accuracy = knn_df.iloc[2]
-    knn_accuracy = knn_accuracy['precision']
+    knn_accuracy = knn_df[knn_df['Stats'] == 'accuracy']
+    knn_accuracy = knn_accuracy['precision'].values[0]
 
     nb_df = pd.read_csv(fr"{folder}\nb_results.csv")
-    nb_accuracy = nb_df.iloc[2]
-    nb_accuracy = nb_accuracy['precision']    
+    nb_accuracy = nb_df[nb_df['Stats'] == 'accuracy']
+    nb_accuracy = nb_accuracy['precision'].values[0] 
 
     models = ['Random Forest', 'Decision Tree', 'XGBoost', 'Logistic Regression', 'SVM', 'KNN', 'Naive Bayes']
     accuracies = [rf_accuracy, dt_accuracy, xgb_accuracy, lr_accuracy, svc_accuracy, knn_accuracy, nb_accuracy]
@@ -799,7 +891,7 @@ def all(df, columns, target, test_size, lr_solver_type='lbfgs', svc_kernel_type=
 
     for bar, accuracy in zip(bars, accuracies):
         plt.text(bar.get_x() + bar.get_width() / 2, bar.get_height() - 0.05, f'{accuracy:.2f}', ha='center', color='white', fontsize=9)
-    
+
     plt.show()
 
 
